@@ -1,0 +1,2 @@
+"""Approved course deadline messaging."""
+
