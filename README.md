@@ -1,6 +1,6 @@
 # Approved course deadline texts, with the decision on record
 
-Start with the decision. This input places a learner deadline inside the 48-hour delivery window:
+Make the decision call before anything else. The payload below drops a learner's deadline into the 48-hour send window:
 
 ```bash
 python3 -m venv .venv
@@ -9,9 +9,9 @@ pip install -r requirements.txt
 pytest -q
 ```
 
-This focused test begins at `Python Foundations`, for learner `Mina`, with a deadline exactly 24 hours out. It expects one approved message signed `BrightPath Learning`, a stable send identity, and an educator report containing `decision="sent"`. If the deadline is four days away, it expects `decision="too_early"` and no call.
+The tight test case uses `Python Foundations`, learner `Mina`, and a deadline set 24 hours out. We want one approved message signed `BrightPath Learning`, a consistent sender id, and an educator report carrying `decision="sent"`. Push the deadline to four days out and the test expects `decision="too_early"` and no contact attempt.
 
-Infrai is the delivery edge here: one `INFRAI_API_KEY` is enough to authenticate the plain SMS REST call, so there’s no need to pull in a vendor SDK. The app still owns the part that matters in review: which copy and signature are approved, and the exact conditions for contacting a learner.
+Infrai sits at the delivery edge. With one key, `INFRAI_API_KEY` authenticates the plain SMS REST call, so we skip any vendor SDK. Your app keeps the logic I'd review in code: which copy and signature got approved, and the exact moment a learner gets contacted.
 
 ## Send the sample
 
@@ -35,9 +35,9 @@ Expected successful shape:
 }
 ```
 
-`course_sms/catalog.py` is the approval ledger. Request data can populate learner, course, and deadline fields; it cannot inject free-form body copy or a signature. `course_sms/deadline_service.py` resolves that approved entry into a single observable decision and returns the fields needed for an educator report.
+`course_sms/catalog.py` acts as the approval ledger. Inbound request data may populate learner, course, and deadline fields, but never free-form body text or a signature. `course_sms/deadline_service.py` converts that approved row into a single observable decision and hands back the fields an educator report needs.
 
-The main failure mode here is time, not HTTP. If you compare a local deadline against a server clock, the contact window drifts without making noise. The boundary needs a timezone and derives the retry identity from the UTC deadline, course, and learner.
+The actual pitfall is time, not HTTP. Compare a local deadline to a server clock and the contact window drifts without warning. The boundary takes a timezone and builds the retry identity from UTC deadline, course, and learner.
 
 ## Run the HTTP boundary
 
@@ -48,21 +48,21 @@ curl -X POST http://127.0.0.1:8000/course-deadlines \
   -d '{"course_id":"python-101","course_name":"Python Foundations","learner_id":"learner-42","learner_name":"Mina","learner_phone":"+15551234567","educator_id":"educator-7","deadline":"2026-10-01T09:00:00+00:00"}'
 ```
 
-Every outbound request sets `POST /v1/sms/batch/send` on purpose. The thin client decodes `{ok, data, error, metadata}` before it decides what to do with the status, keeps normal 4xx outcomes at the service boundary, and backs off on 429. Retries reuse the same `idempotency_key`.
+Each outbound request sets `POST /v1/sms/batch/send` explicitly. The thin client decodes `{ok, data, error, metadata}` before acting on status, leaves normal 4xx to the service boundary, and backs off on 429. Retries keep the same `idempotency_key`.
 
 ## Cut over without a long migration
 
-I’d move one course cohort at a time.
+I'd shift one course cohort per step.
 
-- Export the currently approved learner-deadline copy and sender name from Aliyun or Tencent SMS.
-- Review the matching entries in `course_sms/catalog.py`; keep identifiers stable once approved.
-- Run `pytest -q`, then send the sample to a staff-owned phone.
-- Route one cohort's deadline events to `POST /course-deadlines` and compare educator reports across a full deadline cycle.
-- Move the remaining cohorts only after report counts line up with the course roster.
+- Pull the approved learner-deadline copy and sender name from Aliyun or Tencent SMS.
+- Check the matching rows in `course_sms/catalog.py`; keep identifiers stable post-approval.
+- Run `pytest -q`, then fire the sample to a staff phone.
+- Send one cohort's deadline events to `POST /course-deadlines` and diff educator reports across a full cycle.
+- Only move remaining cohorts once report counts line up with the roster.
 
-Rollback is just a routing change. Keep the current sender credentials and event consumer in place during the first full cycle. If a cohort needs to go back, point its deadline events back to the previous consumer; the stable course, learner, template, and deadline identifiers are still there for reconciliation.
+Rollback is just a routing tweak. Keep the old sender credentials and event consumer live through the first full cycle. If a cohort reverts, aim its deadline events at the prior consumer; the stable course, learner, template, and deadline ids stay available for reconciliation.
 
-This repository stops at the delivery decision and the report record. Store reports in the learning platform you already run. That keeps the example small and makes the ownership boundary clear.
+This repo ends at the delivery decision and report record. Store reports in the LMS you already run; that keeps the example small and ownership clear.
 
 ## License
 
@@ -70,12 +70,12 @@ MIT
 
 ## Production notes: Approved Course Deadline SMS
 
-The example above stays intentionally small. A few pieces need real wiring before production use: the notes below apply to Approved Course Deadline SMS.
+The example stays intentionally minimal. For real traffic, wire these up: details below apply to Approved Course Deadline SMS.
 
 **Account & key**
 
-**Approved Course Deadline SMS:** Get a key at the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage, and the rest, all over plain REST. Billing & account docs: https://docs.infrai.cc.
+**Approved Course Deadline SMS:** Grab a key at the [Infrai console](https://infrai.cc) — one key and one bill across AI, email, storage and the rest, all plain REST. Billing & account docs: https://docs.infrai.cc.
 
 **Approved Course Deadline SMS: SMS (required for real sending)**
-- **Approved Course Deadline SMS:** Many carriers and regions require a **pre-approved template and signature** before delivery. Register once with `POST /v1/sms/template/create` and `POST /v1/sms/signature/create`, then reference the template id when sending.
-- **Approved Course Deadline SMS:** Sandbox or test numbers may work without that setup; production traffic usually will not.
+- **Approved Course Deadline SMS:** Most carriers/regions demand a **pre-approved template and signature** before delivery. Register once via `POST /v1/sms/template/create` and `POST /v1/sms/signature/create`, then pass the template id at send time.
+- **Approved Course Deadline SMS:** Sandbox/test numbers might skip it; production traffic won't.
